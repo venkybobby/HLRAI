@@ -1,0 +1,31 @@
+{
+  "approvers": ["Venky R"],
+  "scope": {"obligation": "OBL-ART50-2"},
+  "allowed_paths": [
+    "obligations[OBL-ART50-2].trigger",
+    "obligations[OBL-ART50-2].duty",
+    "obligations[OBL-ART50-2].effective.default",
+    "obligations[OBL-ART50-2].effective.transition",
+    "obligations[OBL-ART50-2].exceptions",
+    "obligations[OBL-ART50-2].verification.sources",
+    "obligations[OBL-ART50-2].verification.source_version",
+    "controls[CTL-MARK-PATHS].requirements",
+    "controls[CTL-MARK-DETECT].requirements"
+  ],
+  "limits": {
+    "max_calls": 4,
+    "max_repairs": 2,
+    "max_tokens_per_call": 1500,
+    "max_total_completion_tokens": 4000,
+    "max_packet_chars": 12000,
+    "max_operations": 6,
+    "locator_window_chars": 2000
+  },
+  "models": {
+    "base_url": "https://integrate.api.nvidia.com/v1",
+    "api_key_env": "NVIDIA_API_KEY",
+    "temperature": 0.1,
+    "drafter": null,
+    "verifier": null
+  }
+}

@@ -1,0 +1,389 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "eu-ai-act-register.schema.json",
+  "title": "EU AI Act policy-as-code register, pilot v0.2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "status", "conclusion_policy", "obligations", "controls", "evaluations", "retention_schedule", "migration"],
+  "properties": {
+    "schema_version": {"const": "0.2"},
+    "status": {"const": "pilot"},
+    "conclusion_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min_verification_for_automated_conclusion", "pre_due_date_failure_permission"],
+      "properties": {
+        "min_verification_for_automated_conclusion": {"const": "verified_primary"},
+        "pre_due_date_failure_permission": {"$ref": "#/$defs/permission"}
+      }
+    },
+    "obligations": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/obligation"}},
+    "controls": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/control"}},
+    "evaluations": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/evaluation"}},
+    "retention_schedule": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/retention"}},
+    "migration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["register_index"],
+      "properties": {
+        "register_index": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["row", "reg", "cat", "ctl"],
+            "properties": {
+              "row": {"type": "string", "pattern": "^R-[0-9]{2}$"},
+              "reg": {"type": "string", "minLength": 1},
+              "cat": {"$ref": "#/$defs/category"},
+              "ctl": {"type": ["string", "null"], "pattern": "^CTL-[A-Z0-9-]+$"}
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+    "datetime": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+    "category": {"enum": ["A", "B", "A+C", "C"]},
+    "legal_status": {"enum": ["binding_law", "official_guidance", "voluntary_code", "internal_policy"]},
+    "verification_status": {"enum": ["verified_primary", "verified_secondary", "unverified", "disputed"]},
+    "applicability": {"enum": ["applicable", "not_applicable", "unresolved", "not_yet_effective", "in_transition"]},
+    "evidence_validity": {"enum": ["valid", "stale", "missing", "version_mismatch", "unreliable"]},
+    "control_result": {"enum": ["pass", "fail", "inconclusive", "execution_error"]},
+    "assurance": {"enum": ["accepted", "accepted_with_restrictions", "rejected", "not_reviewed"]},
+    "completion": {"enum": ["satisfied", "conditionally_satisfied", "closed_late", "not_applicable_approved", "not_yet_effective", "open", "blocked_unverified_interpretation"]},
+    "permission": {"enum": ["permitted", "permitted_with_restrictions", "not_permitted", "pending_escalation", "undetermined"]},
+
+    "obligation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "legal_source", "actor", "duty", "effective", "exceptions", "verification", "controls"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^OBL-[A-Z0-9-]+$"},
+        "legal_source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["instrument", "article", "status"],
+          "properties": {
+            "instrument": {"type": "string", "minLength": 1},
+            "article": {"type": "string", "minLength": 1},
+            "status": {"$ref": "#/$defs/legal_status"}
+          }
+        },
+        "actor": {"enum": ["provider", "deployer", "importer", "distributor", "gpai_provider", "authorised_representative"]},
+        "trigger": {"type": "string"},
+        "duty": {"type": "string", "minLength": 1},
+        "periods_days": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 1}},
+        "clock_starts": {"const": "awareness_timestamp"},
+        "scope_note": {"type": "string"},
+        "effective": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["default", "transition"],
+          "properties": {
+            "default": {"$ref": "#/$defs/date"},
+            "transition": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["if_placed_before", "effective"],
+                "properties": {
+                  "if_placed_before": {"$ref": "#/$defs/date"},
+                  "effective": {"$ref": "#/$defs/date"}
+                }
+              }
+            }
+          }
+        },
+        "exceptions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "article", "text", "conditions", "covers_only"],
+            "properties": {
+              "id": {"type": "string", "pattern": "^EXC-[A-Z0-9-]+$"},
+              "article": {"type": "string"},
+              "text": {"type": "string"},
+              "conditions": {"type": "array", "items": {"type": "string"}},
+              "covers_only": {"type": "array", "items": {"type": "string"}}
+            }
+          }
+        },
+        "verification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["provision", "status", "source_version", "sources", "reviewer", "verified_at"],
+          "properties": {
+            "provision": {"type": "string", "minLength": 1},
+            "status": {"$ref": "#/$defs/verification_status"},
+            "source_version": {"type": "string", "minLength": 1},
+            "sources": {"type": "array", "items": {"type": "string", "pattern": "^https?://"}},
+            "reviewer": {"type": ["string", "null"]},
+            "verified_at": {"oneOf": [{"$ref": "#/$defs/date"}, {"type": "null"}]}
+          },
+          "allOf": [
+            {
+              "if": {"properties": {"status": {"const": "verified_primary"}}, "required": ["status"]},
+              "then": {
+                "properties": {
+                  "reviewer": {"type": "string", "minLength": 1},
+                  "verified_at": {"$ref": "#/$defs/date"},
+                  "sources": {"minItems": 1}
+                }
+              }
+            },
+            {
+              "if": {"properties": {"status": {"enum": ["verified_secondary", "verified_primary"]}}, "required": ["status"]},
+              "then": {"properties": {"sources": {"minItems": 1}}}
+            }
+          ]
+        },
+        "controls": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^CTL-[A-Z0-9-]+$"}}
+      }
+    },
+
+    "control": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "implements", "category", "requirements", "on_fail", "criticality", "owner_role"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^CTL-[A-Z0-9-]+$"},
+        "implements": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^OBL-[A-Z0-9-]+$"}},
+        "category": {"$ref": "#/$defs/category"},
+        "requirements": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "text", "legal_status", "basis"],
+            "properties": {
+              "id": {"type": "string", "pattern": "^REQ-[A-Z0-9-]+$"},
+              "text": {"type": "string", "minLength": 1},
+              "legal_status": {"$ref": "#/$defs/legal_status"},
+              "basis": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "threshold": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["approved_before_testing", "approver_role", "rationale_ref", "metrics"],
+          "properties": {
+            "approved_before_testing": {"const": true},
+            "approver_role": {"type": "string", "minLength": 1},
+            "rationale_ref": {"type": "string", "pattern": "^ref://"},
+            "metrics": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "number"}}
+          }
+        },
+        "waiver_allowed": {"type": "boolean"},
+        "on_fail": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["action", "permission"],
+          "properties": {
+            "action": {"enum": ["keep_row_open", "block_release_of_version", "suspend_processing", "remediation_item", "escalate"]},
+            "escalate": {"type": "string"},
+            "permission": {"enum": ["permitted", "not_permitted", "pending_escalation"]}
+          }
+        },
+        "criticality": {"enum": ["critical", "high", "medium", "low"]},
+        "owner_role": {"type": "string", "minLength": 1}
+      },
+      "allOf": [
+        {"if": {"properties": {"category": {"const": "B"}}, "required": ["category"]}, "then": {"required": ["threshold"]}}
+      ]
+    },
+
+    "outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["completion", "operating_permission"],
+      "properties": {
+        "completion": {"$ref": "#/$defs/completion"},
+        "operating_permission": {"$ref": "#/$defs/permission"},
+        "flags": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+
+    "evaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "scenario", "system", "obligation", "control", "as_of", "law_version", "applicability", "recorded", "expected"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^EVAL-[0-9]{4}$"},
+        "scenario": {"type": "string", "minLength": 1},
+        "system": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "version"],
+          "properties": {
+            "id": {"type": "string", "minLength": 1},
+            "version": {"type": "string", "minLength": 1},
+            "placed_on_market": {"$ref": "#/$defs/date"}
+          }
+        },
+        "obligation": {"type": "string", "pattern": "^OBL-[A-Z0-9-]+$"},
+        "control": {"type": "string", "pattern": "^CTL-[A-Z0-9-]+$"},
+        "as_of": {"$ref": "#/$defs/date"},
+        "law_version": {"type": "string", "minLength": 1},
+        "applicability": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["value", "reasoning"],
+          "properties": {
+            "value": {"$ref": "#/$defs/applicability"},
+            "reasoning": {"type": "string", "minLength": 1},
+            "approved_by": {"type": "string", "minLength": 1},
+            "second_signer": {"type": "string", "minLength": 1},
+            "expires": {"$ref": "#/$defs/date"},
+            "reassess_on": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+            "conditions_checked": {"type": "object", "additionalProperties": {"type": "boolean"}}
+          },
+          "allOf": [
+            {
+              "if": {"properties": {"value": {"const": "not_applicable"}}, "required": ["value"]},
+              "then": {"required": ["approved_by", "expires", "reassess_on", "conditions_checked"]}
+            }
+          ]
+        },
+        "events_since_approval": {"type": "array", "items": {"type": "string"}},
+        "evidence_validity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["value"],
+          "properties": {
+            "value": {"$ref": "#/$defs/evidence_validity"},
+            "checks": {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        "control_result": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["value"],
+          "properties": {
+            "value": {"$ref": "#/$defs/control_result"},
+            "detail": {"type": "string"}
+          }
+        },
+        "assurance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["value"],
+          "properties": {
+            "value": {"$ref": "#/$defs/assurance"},
+            "restrictions": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+            "expires": {"$ref": "#/$defs/date"}
+          },
+          "allOf": [
+            {
+              "if": {"properties": {"value": {"const": "accepted_with_restrictions"}}, "required": ["value"]},
+              "then": {"required": ["restrictions", "expires"]}
+            }
+          ]
+        },
+        "incident": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["class", "awareness_at", "ticket_created_at", "deadline_at", "deadline_missed"],
+          "properties": {
+            "class": {"enum": ["general", "death", "widespread_or_critical_infrastructure"]},
+            "awareness_at": {"$ref": "#/$defs/datetime"},
+            "ticket_created_at": {"$ref": "#/$defs/datetime"},
+            "deadline_at": {"$ref": "#/$defs/datetime"},
+            "deadline_missed": {"type": "boolean"},
+            "submission": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["submitted_at", "receipt_ref"],
+              "properties": {
+                "submitted_at": {"$ref": "#/$defs/datetime"},
+                "receipt_ref": {"type": "string", "pattern": "^ref://"}
+              }
+            },
+            "remediation": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["opened_at"],
+              "properties": {
+                "opened_at": {"$ref": "#/$defs/date"},
+                "completed_at": {"$ref": "#/$defs/date"}
+              }
+            }
+          }
+        },
+        "recorded": {"$ref": "#/$defs/outcome"},
+        "expected": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["now", "if_verified"],
+          "properties": {
+            "now": {"$ref": "#/$defs/outcome"},
+            "if_verified": {"$ref": "#/$defs/outcome"}
+          }
+        },
+        "note": {"type": "string"}
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"applicability": {"properties": {"value": {"enum": ["applicable", "in_transition", "not_yet_effective"]}}, "required": ["value"]}},
+            "required": ["applicability"]
+          },
+          "then": {"required": ["evidence_validity", "control_result", "assurance"]}
+        }
+      ]
+    },
+
+    "retention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact", "store", "period", "legal_basis", "decision_status"],
+      "properties": {
+        "artifact": {"type": "string", "minLength": 1},
+        "store": {"enum": ["full_artifact", "reference_and_hash_only", "none"]},
+        "period": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["value", "unit", "is_minimum"],
+          "properties": {
+            "value": {"type": ["integer", "null"], "minimum": 1},
+            "unit": {"enum": ["months", "years", null]},
+            "is_minimum": {"type": "boolean"}
+          }
+        },
+        "legal_basis": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "basis", "verification"],
+          "properties": {
+            "status": {"$ref": "#/$defs/legal_status"},
+            "basis": {"type": "string", "minLength": 1},
+            "verification": {"$ref": "#/$defs/verification_status"}
+          }
+        },
+        "decision_status": {"enum": ["set_by_law", "set_by_policy", "needs_legal_decision"]}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"decision_status": {"const": "set_by_law"}}, "required": ["decision_status"]},
+          "then": {
+            "properties": {
+              "period": {"properties": {"value": {"type": "integer"}, "unit": {"enum": ["months", "years"]}}},
+              "legal_basis": {"properties": {"status": {"const": "binding_law"}}}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"decision_status": {"const": "needs_legal_decision"}}, "required": ["decision_status"]},
+          "then": {"properties": {"period": {"properties": {"value": {"type": "null"}}}}}
+        }
+      ]
+    }
+  }
+}

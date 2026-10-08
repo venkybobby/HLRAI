@@ -1,0 +1,412 @@
+# EU AI Act policy-as-code register: structured records (pilot v0.2)
+#
+# Contract: eu-ai-act-register.schema.json (JSON Schema, authoritative for
+# fields, types, enums and conditional constraints).
+# Behaviour: check_register.py (derives outcomes, asserts forbidden states).
+#
+# All systems, thresholds and incidents below are FICTIONAL pilot data.
+# Law baseline: Regulation (EU) 2024/1689 as amended by (EU) 2026/1744.
+#
+# Three record types:
+#   obligations : what the law says (provision, actor, dates, exceptions,
+#                 and how well the reading has been verified)
+#   controls    : how we check it, split into individually labelled
+#                 requirements (each with its own legal status)
+#   evaluations : one system, one version, one obligation, one date
+#
+# Two outcomes are kept apart on every evaluation:
+#   completion           where the OBLIGATION stands
+#   operating_permission whether the SYSTEM may keep operating under our policy
+# Restricted operation never marks an obligation fully satisfied, and an
+# approved exemption is never counted as satisfied.
+
+schema_version: "0.2"
+status: pilot
+
+conclusion_policy:
+  # No automated compliance conclusion unless the obligation's reading is
+  # verified against the primary text by a named reviewer.
+  min_verification_for_automated_conclusion: verified_primary
+  # Internal policy: a failing control on an in_transition obligation does not
+  # remove operating permission before the transition date; it stays open.
+  pre_due_date_failure_permission: permitted
+
+obligations:
+  - id: OBL-ART50-2
+    legal_source: {instrument: "Reg 2024/1689", article: "50(2)", status: binding_law}
+    actor: provider
+    trigger: "Generative system producing synthetic audio, image, video or text"
+    duty: "Mark outputs in a machine-readable format and make them detectable, as far as technically feasible"
+    effective:
+      default: "2026-08-02"
+      transition:
+        - {if_placed_before: "2026-08-02", effective: "2026-12-02"}
+    exceptions:
+      - {id: EXC-FEASIBILITY, article: "50(2)", text: "Effectiveness, robustness and reliability are required as far as technically feasible", conditions: [], covers_only: []}
+    verification:
+      provision: "Art 50(2) as amended"
+      status: verified_secondary
+      source_version: "Law-firm summaries of Reg 2026/1744 and the Commission Code of Practice; not checked against the Official Journal or consolidated text"
+      sources:
+        - "https://www.addleshawgoddard.com/en/insights/insights-briefings/2026/technology/eu-ai-act-code-practice-marking-labelling-ai-generated-content/"
+        - "https://www.iubenda.com/en/blog/ai-omnibus-adopted-august-2-obligations-july-2026/"
+        - "https://www.cuatrecasas.com/en/latam/intellectual-property/art/digital-omnibus-ai-has-been-published"
+      reviewer: null
+      verified_at: null
+    controls: [CTL-MARK-PATHS, CTL-MARK-DETECT]
+
+  - id: OBL-ART4A
+    legal_source: {instrument: "Reg 2024/1689", article: "4a", status: binding_law}
+    actor: provider
+    trigger: "Processing special-category personal data to detect and correct bias"
+    duty: "Process only where strictly necessary and every listed safeguard holds; other data, including synthetic or anonymised data, cannot effectively achieve the purpose"
+    effective:
+      default: "2026-07-27"
+      transition: []
+    exceptions: []
+    scope_note: "Paragraph 2 extends to further providers and deployers under conditions; confirm before applying beyond high-risk providers"
+    verification:
+      provision: "Art 4a(1)"
+      status: verified_secondary
+      source_version: "Text of Art 4a as published on third-party AI Act sites; not checked against the Official Journal"
+      sources:
+        - "https://ai-act-law.eu/?p=4167"
+        - "https://www.artificialintelligenceact.eu/ai-act-explorer/digital-omnibus/"
+      reviewer: null
+      verified_at: null
+    controls: [CTL-BIAS-DATA]
+
+  - id: OBL-ART53-1A
+    legal_source: {instrument: "Reg 2024/1689", article: "53(1)(a)", status: binding_law}
+    actor: gpai_provider
+    duty: "Model technical documentation for the AI Office"
+    effective:
+      default: "2025-08-02"
+      transition:
+        - {if_placed_before: "2025-08-02", effective: "2027-08-02"}
+    exceptions:
+      - id: EXC-OPEN-SOURCE
+        article: "53(2)"
+        text: "Open-source exemption from Art 53(1)(a) and (b) only"
+        conditions: [free_open_source_licence, public_parameters, no_systemic_risk]
+        covers_only: ["53(1)(a)", "53(1)(b)"]
+    verification:
+      provision: "Art 53(1)(a), 53(2), Art 111 transition"
+      status: verified_secondary
+      source_version: "Law-firm and glossary summaries; not checked against the Official Journal"
+      sources:
+        - "https://www.casrai.org/dictionary/term/eu-ai-act-article-53-general-purpose-ai-model-obligations"
+        - "https://www.mishcon.com/news/gpai-model-guidance-and-training-data-templates-published-by-commission"
+      reviewer: null
+      verified_at: null
+    controls: [CTL-GPAI-DOCS]
+
+  - id: OBL-ART53-1C
+    legal_source: {instrument: "Reg 2024/1689", article: "53(1)(c)", status: binding_law}
+    actor: gpai_provider
+    duty: "Copyright compliance policy, including respect for text and data mining opt-outs"
+    effective:
+      default: "2025-08-02"
+      transition:
+        - {if_placed_before: "2025-08-02", effective: "2027-08-02"}
+    exceptions: []   # the Art 53(2) exemption does NOT reach this duty
+    verification:
+      provision: "Art 53(1)(c), 53(2)"
+      status: verified_secondary
+      source_version: "Law-firm and glossary summaries; not checked against the Official Journal"
+      sources:
+        - "https://www.casrai.org/dictionary/term/eu-ai-act-article-53-general-purpose-ai-model-obligations"
+        - "https://www.mishcon.com/news/gpai-model-guidance-and-training-data-templates-published-by-commission"
+      reviewer: null
+      verified_at: null
+    controls: [CTL-COPYRIGHT-POLICY]
+
+  - id: OBL-ART73
+    legal_source: {instrument: "Reg 2024/1689", article: "73", status: binding_law}
+    actor: provider
+    duty: "Report serious incidents; periods run from awareness and are outer limits"
+    periods_days: {general: 15, death: 10, widespread_or_critical_infrastructure: 2}
+    clock_starts: awareness_timestamp   # never ticket creation
+    effective:
+      default: "2027-12-02"
+      transition: []
+    exceptions: []
+    scope_note: "Date shown is the Annex III high-risk date; confirm per system class"
+    verification:
+      provision: "Art 73 (periods and trigger)"
+      status: unverified
+      source_version: "Recalled from the Act text; no source retrieved in this work"
+      sources: []
+      reviewer: null
+      verified_at: null
+    controls: [CTL-INCIDENT-CLOCK]
+
+controls:
+  - id: CTL-MARK-PATHS
+    implements: [OBL-ART50-2]
+    category: "A+C"
+    requirements:
+      - {id: REQ-MARK-1, text: "Outputs are marked in a machine-readable format and detectable, as far as technically feasible", legal_status: binding_law, basis: "Art 50(2)"}
+      - {id: REQ-MARK-2, text: "Layered marking: signed metadata plus imperceptible watermark", legal_status: voluntary_code, basis: "Code of Practice on Transparency of AI-Generated Content"}
+      - {id: REQ-MARK-3, text: "Every output path (API, export, batch, UI) is covered", legal_status: internal_policy, basis: "Coverage rule; the Act does not enumerate paths"}
+    waiver_allowed: false   # infeasibility is recorded and escalated, never a pass
+    on_fail: {action: keep_row_open, escalate: legal, permission: pending_escalation}
+    criticality: high
+    owner_role: ml_lead
+
+  - id: CTL-MARK-DETECT
+    implements: [OBL-ART50-2]
+    category: B
+    requirements:
+      - {id: REQ-DET-1, text: "Marking solution is effective, robust and reliable as far as technically feasible", legal_status: binding_law, basis: "Art 50(2)"}
+      - {id: REQ-DET-2, text: "Detection recall and false-positive rate meet approved thresholds after re-encoding, cropping and paraphrase", legal_status: internal_policy, basis: "Threshold choice is ours, not the Act's"}
+    threshold:
+      approved_before_testing: true
+      approver_role: governance_lead
+      rationale_ref: "ref://thresholds/mark-detect-v1"
+      metrics: {recall_min: 0.95, false_positive_max: 0.01}   # example values only
+    on_fail: {action: block_release_of_version, permission: not_permitted}
+    criticality: high
+    owner_role: ml_lead
+
+  - id: CTL-BIAS-DATA
+    implements: [OBL-ART4A]
+    category: "A+C"
+    requirements:
+      - {id: REQ-BIAS-1, text: "Processing is strictly necessary and other data, including synthetic or anonymised, cannot effectively achieve the purpose", legal_status: binding_law, basis: "Art 4a(1)"}
+      - {id: REQ-BIAS-2, text: "Safeguards enforced and logged: re-use limits, pseudonymisation, access controls, no transfer, deletion", legal_status: binding_law, basis: "Art 4a(1)"}
+      - {id: REQ-BIAS-3, text: "An actual synthetic-data trial is documented before special-category data is used", legal_status: internal_policy, basis: "Stricter than Art 4a, which does not expressly require a trial"}
+    on_fail: {action: suspend_processing, escalate: dpo, permission: not_permitted}
+    criticality: high
+    owner_role: dpo
+
+  - id: CTL-GPAI-DOCS
+    implements: [OBL-ART53-1A]
+    category: "A+C"
+    requirements:
+      - {id: REQ-DOCS-1, text: "Technical documentation drawn up and kept up to date for the AI Office", legal_status: binding_law, basis: "Art 53(1)(a)"}
+      - {id: REQ-DOCS-2, text: "Required content fields complete and version-matched; a human attests accuracy", legal_status: internal_policy, basis: "Completeness check plus attestation"}
+    on_fail: {action: remediation_item, permission: permitted}
+    criticality: medium
+    owner_role: governance_lead
+
+  - id: CTL-COPYRIGHT-POLICY
+    implements: [OBL-ART53-1C]
+    category: "A+C"
+    requirements:
+      - {id: REQ-CR-1, text: "Policy to comply with EU copyright law, including text and data mining opt-outs", legal_status: binding_law, basis: "Art 53(1)(c)"}
+      - {id: REQ-CR-2, text: "Crawler honours opt-out signals in tests", legal_status: internal_policy, basis: "Test method; the GPAI Code of Practice sets crawler commitments for signatories"}
+    on_fail: {action: keep_row_open, escalate: legal, permission: pending_escalation}
+    criticality: high
+    owner_role: legal_counsel
+
+  - id: CTL-INCIDENT-CLOCK
+    implements: [OBL-ART73]
+    category: "A+C"
+    requirements:
+      - {id: REQ-INC-1, text: "Serious incidents reported to the authority within the outer limits, running from awareness", legal_status: binding_law, basis: "Art 73"}
+      - {id: REQ-INC-2, text: "Incomplete initial report permitted, followed by a complete report", legal_status: binding_law, basis: "Art 73 (confirm paragraph)"}
+      - {id: REQ-INC-3, text: "Awareness timestamp recorded separately from ticket creation", legal_status: internal_policy, basis: "Implements the legal trigger; the Act does not prescribe the record"}
+    on_fail: {action: escalate, escalate: general_counsel, permission: pending_escalation}
+    criticality: critical
+    owner_role: governance_lead
+
+# Evaluations carry the inputs, what is recorded in the system, and explicit
+# expected outcomes: `now` (with the current verification status) and
+# `if_verified` (the same facts, if every reading were verified_primary).
+evaluations:
+  - id: EVAL-0001
+    scenario: "Legacy generative system, batch export path unmarked"
+    system: {id: "assistant-demo", version: "2.4.1", placed_on_market: "2026-03-01"}
+    obligation: OBL-ART50-2
+    control: CTL-MARK-PATHS
+    as_of: "2026-10-04"
+    law_version: "2024/1689 as amended by 2026/1744"
+    applicability:
+      value: in_transition
+      reasoning: "On market before 2026-08-02; marking due 2026-12-02"
+      approved_by: legal_counsel
+    evidence_validity: {value: valid, checks: [provenance, freshness, version_match]}
+    control_result: {value: fail, detail: "Batch export path emits no marking"}
+    assurance: {value: not_reviewed}
+    recorded: {completion: blocked_unverified_interpretation, operating_permission: undetermined}
+    expected:
+      now: {completion: blocked_unverified_interpretation, operating_permission: undetermined, flags: [unverified_interpretation]}
+      if_verified: {completion: open, operating_permission: permitted, flags: [before_due_date, control_failed]}
+
+  - id: EVAL-0002
+    scenario: "Open-source model with no copyright policy on file"
+    system: {id: "open-model-demo", version: "1.0", placed_on_market: "2026-06-10"}
+    obligation: OBL-ART53-1C
+    control: CTL-COPYRIGHT-POLICY
+    as_of: "2026-10-04"
+    law_version: "2024/1689 as amended by 2026/1744"
+    applicability:
+      value: applicable
+      reasoning: "Open-source exemption does not reach 53(1)(c)"
+      approved_by: legal_counsel
+    evidence_validity: {value: missing, checks: [artifact_exists]}
+    control_result: {value: fail, detail: "No copyright policy on file"}
+    assurance: {value: not_reviewed}
+    recorded: {completion: blocked_unverified_interpretation, operating_permission: undetermined}
+    expected:
+      now: {completion: blocked_unverified_interpretation, operating_permission: undetermined, flags: [unverified_interpretation]}
+      if_verified: {completion: open, operating_permission: pending_escalation, flags: [control_failed, evidence_missing]}
+    note: "A missing artifact fails evidence validity; a breach is not presumed until reviewed"
+
+  - id: EVAL-0003
+    scenario: "Open-source exemption from 53(1)(a), approved as not applicable"
+    system: {id: "open-model-demo", version: "1.0", placed_on_market: "2026-06-10"}
+    obligation: OBL-ART53-1A
+    control: CTL-GPAI-DOCS
+    as_of: "2026-10-04"
+    law_version: "2024/1689 as amended by 2026/1744"
+    applicability:
+      value: not_applicable
+      reasoning: "Art 53(2) exemption: free licence, public parameters, no systemic risk"
+      approved_by: legal_counsel
+      second_signer: governance_lead
+      expires: "2027-10-04"
+      reassess_on: [licence_change, parameters_no_longer_public, systemic_risk_designation, compute_threshold_change]
+      conditions_checked: {free_open_source_licence: true, public_parameters: true, no_systemic_risk: true}
+    events_since_approval: []
+    recorded: {completion: blocked_unverified_interpretation, operating_permission: undetermined}
+    expected:
+      now: {completion: blocked_unverified_interpretation, operating_permission: undetermined, flags: [unverified_interpretation]}
+      if_verified: {completion: not_applicable_approved, operating_permission: permitted, flags: []}
+
+  - id: EVAL-0004
+    scenario: "Incident rehearsal: ticket opened three days after awareness"
+    system: {id: "triage-pilot", version: "0.9"}
+    obligation: OBL-ART73
+    control: CTL-INCIDENT-CLOCK
+    as_of: "2026-10-04"
+    law_version: "2024/1689 as amended by 2026/1744"
+    applicability: {value: not_yet_effective, reasoning: "Annex III high-risk; applies from 2027-12-02; rehearsal only"}
+    evidence_validity: {value: valid, checks: [provenance, version_match]}
+    control_result: {value: pass, detail: "Clock set from awareness, not ticket creation"}
+    assurance: {value: not_reviewed}
+    incident:
+      class: general
+      awareness_at: "2026-10-01T14:20:00Z"
+      ticket_created_at: "2026-10-04T09:05:00Z"
+      deadline_at: "2026-10-16T14:20:00Z"
+      deadline_missed: false
+    recorded: {completion: blocked_unverified_interpretation, operating_permission: undetermined}
+    expected:
+      now: {completion: blocked_unverified_interpretation, operating_permission: undetermined, flags: [ticket_created_after_awareness, unverified_interpretation]}
+      if_verified: {completion: not_yet_effective, operating_permission: permitted, flags: [ticket_created_after_awareness]}
+
+# Retention is set per artifact type with its own basis. Periods the Act does
+# not set are left null and marked for a legal decision, never guessed.
+retention_schedule:
+  - artifact: "Annex IV technical documentation, QMS documents, declaration of conformity"
+    store: full_artifact
+    period: {value: 10, unit: years, is_minimum: false}
+    legal_basis: {status: binding_law, basis: "Art 18 (runs from placing on the market or putting into service)", verification: unverified}
+    decision_status: set_by_law
+  - artifact: "Automatically generated logs held by the provider"
+    store: full_artifact
+    period: {value: 6, unit: months, is_minimum: true}
+    legal_basis: {status: binding_law, basis: "Art 19", verification: unverified}
+    decision_status: set_by_law
+  - artifact: "Automatically generated logs held by the deployer"
+    store: full_artifact
+    period: {value: 6, unit: months, is_minimum: true}
+    legal_basis: {status: binding_law, basis: "Art 26(6)", verification: unverified}
+    decision_status: set_by_law
+  - artifact: "Evaluation and attestation records from this register"
+    store: full_artifact
+    period: {value: null, unit: null, is_minimum: false}
+    legal_basis: {status: internal_policy, basis: "Audit evidence; counsel to set against limitation periods and sector rules", verification: unverified}
+    decision_status: needs_legal_decision
+  - artifact: "Assessment evidence snapshots (test reports, dataset samples)"
+    store: reference_and_hash_only
+    period: {value: null, unit: null, is_minimum: false}
+    legal_basis: {status: internal_policy, basis: "References and hashes only; controlled snapshots where an auditor needs content", verification: unverified}
+    decision_status: needs_legal_decision
+  - artifact: "Raw prompts, personal data, patient records"
+    store: none
+    period: {value: null, unit: null, is_minimum: false}
+    legal_basis: {status: binding_law, basis: "GDPR storage limitation and data minimisation; counsel to confirm", verification: unverified}
+    decision_status: needs_legal_decision
+
+# Index of the 69 rows in the Google-style register document. Coverage counts
+# are generated from this index; `ctl: null` means NOT migrated to records.
+migration:
+  register_index:
+    # 1. Scope, roles, classification
+    - {row: R-00, reg: "1-scope", cat: "A+C", ctl: null}
+    - {row: R-01, reg: "1-scope", cat: "A+C", ctl: null}
+    - {row: R-02, reg: "1-scope", cat: "A+C", ctl: null}
+    - {row: R-03, reg: "1-scope", cat: C, ctl: null}
+    - {row: R-04, reg: "1-scope", cat: "A+C", ctl: null}
+    - {row: R-05, reg: "1-scope", cat: "A+C", ctl: null}
+    - {row: R-06, reg: "1-scope", cat: "A+C", ctl: null}
+    - {row: R-07, reg: "1-scope", cat: C, ctl: null}
+    - {row: R-08, reg: "1-scope", cat: A, ctl: null}
+    - {row: R-09, reg: "1-scope", cat: "A+C", ctl: null}
+    # 2. High-risk provider duties
+    - {row: R-10, reg: "2-provider", cat: "A+C", ctl: null}
+    - {row: R-11, reg: "2-provider", cat: C, ctl: null}
+    - {row: R-12, reg: "2-provider", cat: B, ctl: null}
+    - {row: R-13, reg: "2-provider", cat: C, ctl: null}
+    - {row: R-14, reg: "2-provider", cat: B, ctl: null}
+    - {row: R-15, reg: "2-provider", cat: C, ctl: null}
+    - {row: R-16, reg: "2-provider", cat: B, ctl: null}
+    - {row: R-17, reg: "2-provider", cat: "A+C", ctl: CTL-BIAS-DATA}
+    - {row: R-18, reg: "2-provider", cat: "A+C", ctl: null}
+    - {row: R-19, reg: "2-provider", cat: A, ctl: null}
+    - {row: R-20, reg: "2-provider", cat: "A+C", ctl: null}
+    - {row: R-21, reg: "2-provider", cat: A, ctl: null}
+    - {row: R-22, reg: "2-provider", cat: C, ctl: null}
+    - {row: R-23, reg: "2-provider", cat: B, ctl: null}
+    - {row: R-24, reg: "2-provider", cat: B, ctl: null}
+    - {row: R-25, reg: "2-provider", cat: B, ctl: null}
+    - {row: R-26, reg: "2-provider", cat: "A+C", ctl: null}
+    - {row: R-27, reg: "2-provider", cat: A, ctl: null}
+    - {row: R-28, reg: "2-provider", cat: "A+C", ctl: null}
+    - {row: R-29, reg: "2-provider", cat: A, ctl: null}
+    - {row: R-30, reg: "2-provider", cat: A, ctl: null}
+    - {row: R-31, reg: "2-provider", cat: "A+C", ctl: null}
+    - {row: R-32, reg: "2-provider", cat: "A+C", ctl: null}
+    - {row: R-33, reg: "2-provider", cat: "A+C", ctl: CTL-INCIDENT-CLOCK}
+    - {row: R-34, reg: "2-provider", cat: A, ctl: null}
+    - {row: R-35, reg: "2-provider", cat: "A+C", ctl: null}
+    # 3a. Deployers
+    - {row: R-40, reg: "3a-deployer", cat: "A+C", ctl: null}
+    - {row: R-41, reg: "3a-deployer", cat: "A+C", ctl: null}
+    - {row: R-42, reg: "3a-deployer", cat: B, ctl: null}
+    - {row: R-43, reg: "3a-deployer", cat: "A+C", ctl: null}
+    - {row: R-44, reg: "3a-deployer", cat: A, ctl: null}
+    - {row: R-45, reg: "3a-deployer", cat: "A+C", ctl: null}
+    - {row: R-46, reg: "3a-deployer", cat: A, ctl: null}
+    - {row: R-47, reg: "3a-deployer", cat: A, ctl: null}
+    - {row: R-48, reg: "3a-deployer", cat: "A+C", ctl: null}
+    - {row: R-49, reg: "3a-deployer", cat: "A+C", ctl: null}
+    # 3b. Transparency (Art 50)
+    - {row: R-50, reg: "3b-transparency", cat: A, ctl: null}
+    - {row: R-51, reg: "3b-transparency", cat: "A+C", ctl: CTL-MARK-PATHS}
+    - {row: R-52, reg: "3b-transparency", cat: B, ctl: CTL-MARK-DETECT}
+    - {row: R-53, reg: "3b-transparency", cat: A, ctl: null}
+    - {row: R-54, reg: "3b-transparency", cat: "A+C", ctl: null}
+    - {row: R-55, reg: "3b-transparency", cat: A, ctl: null}
+    # 3c. General-purpose AI
+    - {row: R-60, reg: "3c-gpai", cat: "A+C", ctl: null}
+    - {row: R-61, reg: "3c-gpai", cat: "A+C", ctl: null}
+    - {row: R-62, reg: "3c-gpai", cat: "A+C", ctl: CTL-GPAI-DOCS}
+    - {row: R-63, reg: "3c-gpai", cat: "A+C", ctl: null}
+    - {row: R-64, reg: "3c-gpai", cat: "A+C", ctl: CTL-COPYRIGHT-POLICY}
+    - {row: R-65, reg: "3c-gpai", cat: "A+C", ctl: null}
+    - {row: R-66, reg: "3c-gpai", cat: B, ctl: null}
+    - {row: R-67, reg: "3c-gpai", cat: C, ctl: null}
+    - {row: R-68, reg: "3c-gpai", cat: A, ctl: null}
+    - {row: R-69, reg: "3c-gpai", cat: C, ctl: null}
+    - {row: R-70, reg: "3c-gpai", cat: "A+C", ctl: null}
+    - {row: R-71, reg: "3c-gpai", cat: B, ctl: null}
+    # 4. Evidence about affected people
+    - {row: R-80, reg: "4-people", cat: B, ctl: null}
+    - {row: R-81, reg: "4-people", cat: "A+C", ctl: null}
+    - {row: R-82, reg: "4-people", cat: B, ctl: null}
+    - {row: R-83, reg: "4-people", cat: C, ctl: null}
+    - {row: R-84, reg: "4-people", cat: "A+C", ctl: null}

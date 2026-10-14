@@ -3,11 +3,14 @@
 Status: draft for approval by Venky R (sole approver). Date: 2026-10-14.
 Basis: repo state at v0.2 (register, schema, checker 80/80, pipeline tests 12/12), `HANDOFF.md`, `migration-status.md`.
 
-## 0. Assumed requirement (confirm or correct)
+## 0. Requirement (confirmed by the owner)
 
-The requirement was not stated beyond "Access project HLRAI", so this spec assumes the obvious next step: turn the CLI-only register and Drafter/Verifier workflow into a usable multi-screen application, without weakening any decision in HANDOFF section 2. If the intended requirement differs, sections 1 to 3 change; sections 4 onward are reusable.
+The goal is the **EU AI Act policy-as-code register with a Drafter/Verifier workflow**. That system already exists as files (register YAML, JSON Schema, checker, pipeline). This spec therefore treats it as the product and describes what is needed to finish it and to put layers around it:
 
-Problem: law can be split into what code can check (A), what is measured against an approved threshold (B), and what needs a named human (C, A+C). Today this exists as YAML plus a CLI. A reviewer cannot browse obligations, see why an evaluation is blocked, review a model-drafted patch next to its source quotes, or export evidence for an auditor without reading YAML and JSON.
+- **Core (must come first):** register + schema + checker + Drafter/Verifier pipeline, extended beyond the single pilot obligation, proven on a live model, and covering the 63 unmigrated rows over time.
+- **Layers around the core:** API, database for workflow state and audit, review front end, auth, deployment. These wrap the core; they never re-implement its rules.
+
+Problem: law can be split into what code can check (A), what is measured against an approved threshold (B), and what needs a named human (C, A+C). Today the system is a YAML file plus a CLI. A reviewer cannot browse obligations, see why an evaluation is blocked, review a model-drafted patch next to its source quotes, or export evidence for an auditor without reading YAML and JSON.
 
 Primary user: governance lead / approver (Venky R today). Secondary: legal counsel (verifies readings), control owners (ml_lead etc.), auditor (read only).
 
@@ -22,7 +25,8 @@ Findings that drive the design:
 3. The workflow is already a state machine: propose -> validate (max 2 repairs) -> verify -> human review -> approve (bound to patch hash, source hashes, base revision) -> idempotent commit with receipt. Statuses: ready_for_review, needs_revision, no_change, escalated, verifier_invalid, budget_exceeded. Only ready_for_review is approvable. This maps directly to a review queue.
 4. Only 6 of 69 register rows are migrated; 63 are not. Row migration is the largest body of work and is currently manual.
 5. Known weak points stated in HANDOFF section 7: approver is a name check, not authentication; no live model run has happened; a date change in a patch can break expected evaluation outcomes; reasoning models can exhaust the 1500-token cap; cloud workspace cannot reach NVIDIA.
-6. Unverified legal items (Art 6(1a)-(1c), Art 111(2) public-authority date, Art 73 periods) are human tasks outside the workflow and must be tracked, not forgotten.
+6. The workflow is hard-scoped to one obligation: `workflow_config.json` has `scope.obligation = OBL-ART50-2` and `allowed_paths` listing only that obligation and two controls. Covering the other four obligations, and later the 63 rows, needs per-obligation scope, not a global one.
+7. Unverified legal items (Art 6(1a)-(1c), Art 111(2) public-authority date, Art 73 periods) are human tasks outside the workflow and must be tracked, not forgotten.
 
 ## 2. Feature list
 
@@ -34,6 +38,12 @@ Priority: M = must (v1), S = should (v1.x), C = could (later), W = won't (explic
 - F3 (M) Verification banner and "blocked reason" on every view where an automated conclusion would otherwise appear.
 - F4 (M) Revision history: sha256 revision list, diff between any two revisions, receipt links.
 - F5 (S) Migration board: the 69 rows by register and migration state, with the "not yet migrated" list.
+
+### 2.0 Core completion (before any UI)
+- F27 (M) Per-obligation scope in config: `allowed_paths` and limits keyed by obligation id, so the pipeline can run on OBL-ART4A, OBL-ART53-1A, OBL-ART53-1C and OBL-ART73 without editing code.
+- F28 (M) Live smoke test and one live propose with genuine Art 50(2) text (Phase 0); result recorded as a receipt.
+- F29 (S) Row-migration assistant: draft a structured record from one of the 63 register rows using the same Drafter/Verifier path, never writing `verification.status`.
+- F30 (S) CI workflow running `check_register.py` (80) and `workflow/test_pipeline.py` (12).
 
 ### 2.2 Verification (human act)
 - F6 (M) Verification queue listing every obligation below `verified_primary` and the open legal items from HANDOFF section 3.
@@ -159,14 +169,15 @@ Canonical register stays in the YAML file (section 6, row 2). Tables:
 
 | Phase | Scope | Exit criteria |
 |---|---|---|
-| 0 | Live smoke test per model on the user's machine; one live propose with genuine Art 50(2) text; add CI workflow | A real `review.json` pasted back; CI green on both existing suites |
+| 0 (core) | Live smoke test per model on the user's machine; one live propose with genuine Art 50(2) text; add CI workflow; per-obligation scope (F27-F28, F30) | A real `review.json` pasted back; CI green on both existing suites |
+| 0b (core) | Migrate the remaining 4 obligations through the workflow; start row migration (F29) | Each obligation has a reviewed patch or an explicit no_change; checker still 80+ |
 | 1 | Read-only app: register, detail, revisions, blocked banner, migration board (F1-F5, F21) | Every screen shows blocked reasons; no write endpoints |
 | 2 | Workflow UI: packet, run, review, approve, commit, auth, roles (F9-F13, F24-F25) | End-to-end approve on stub models in Playwright; replay returns `already_committed` |
 | 3 | Verification queue and action; evaluations with derive view; reports (F6-F8, F15-F16, F20) | Verification of one obligation re-derives its evaluations; pass-rate matches `check_register.py` |
 | 4 | Evidence, exemptions, exports, incident clock, retention (F17-F19, F22-F23) | Auditor export reproduces a past evaluation |
 
 ## 7. Open questions for the approver
-1. Is the assumed requirement in section 0 correct?
+1. (Resolved) Goal is the register plus Drafter/Verifier workflow. Remaining question: is a UI in scope for v1, or should layers wait until the core covers all five obligations?
 2. Which OIDC provider will be used, and where will the app be hosted (it must reach NVIDIA)?
 3. Should a second person (legal reviewer) be added in v1, or does the single-approver pilot continue?
 4. Which two model families for drafter and verifier (the supplied IDs are unverified)?

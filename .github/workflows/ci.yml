@@ -1,0 +1,48 @@
+name: ci
+on:
+  push: {branches: [main]}
+  pull_request:
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r backend/requirements.txt
+      - name: Register checker (expect 80 passed)
+        run: python check_register.py --no-report
+      - name: Workflow tests (expect 12 passed)
+        run: python workflow/test_pipeline.py
+      - name: API tests (contract-validated)
+        run: python -m pytest backend -q
+      - name: Contract is a valid OpenAPI document
+        run: |
+          python - <<'PY'
+          import yaml, pathlib
+          from openapi_spec_validator import validate
+          p = pathlib.Path("openapi/openapi.yaml").resolve()
+          validate(yaml.safe_load(p.read_text()), base_uri=p.as_uri())
+          PY
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm, cache-dependency-path: frontend/package-lock.json}
+      - run: pip install -r backend/requirements.txt
+      - run: npm ci
+        working-directory: frontend
+      - name: Generated client matches the contract
+        run: npm run check:api
+        working-directory: frontend
+      - run: npm run typecheck
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - name: End-to-end (real API, read-only slice S1)
+        run: npm run test:e2e
+        working-directory: frontend
+        env: {CI: "true"}

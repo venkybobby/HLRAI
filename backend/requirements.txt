@@ -1,0 +1,7 @@
+-r ../requirements.txt
+fastapi>=0.110
+uvicorn>=0.29
+httpx>=0.27
+pytest>=8
+referencing>=0.35
+openapi-spec-validator>=0.7

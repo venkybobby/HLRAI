@@ -49,7 +49,7 @@ Drafter (isolated call) -> deterministic validation, up to 2 repairs -> Verifier
 - Review statuses: ready_for_review, needs_revision, no_change, escalated, verifier_invalid, budget_exceeded. Only ready_for_review is approvable.
 - Approval: name must be in config `approvers` (["Venky R"]) plus typed 8+ char patch-hash prefix. Commit rechecks hash, source hashes, base revision, re-validates (schema + checker), preserves YAML comments via ruamel, atomic write, history copy, receipt; replay returns `already_committed`; crash after write recovers via intent file.
 - Budget (minimum): max 4 calls/run, 1500 tokens/call, 4000 completion tokens/run, 12000 source chars, 6 ops, temperature 0.1.
-- Live models: NVIDIA NIM OpenAI-compatible, base_url `https://integrate.api.nvidia.com/v1`. No model names hardcoded; pass `--drafter-model` / `--verifier-model`. Same model for both is refused unless `--allow-same-model`.
+- Live models: NVIDIA NIM OpenAI-compatible, base_url `https://integrate.api.nvidia.com/v1`. Default models are set in `workflow_config.json` (drafter `z-ai/glm-5.3`, verifier `meta/muse-glimmer-30b`); `--drafter-model` / `--verifier-model` override them. Same model for both is refused unless `--allow-same-model`.
 - Candidate models the user supplied (IDs unverified by me): `z-ai/glm-5.3`, `z-ai/glm-5.3-flash`, `google/gemma-4-31b-it`, `meta/muse-glimmer-30b`. Prefer two different families, e.g. Gemma drafter + Meta verifier.
 
 ## 6. How to run

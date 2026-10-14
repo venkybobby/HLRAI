@@ -4,3 +4,8 @@ __pycache__/
 packet*.json
 .env
 *.tgz
+node_modules/
+dist/
+test-results/
+playwright-report/
+.venv/

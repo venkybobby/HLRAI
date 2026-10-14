@@ -41,7 +41,7 @@ Priority: M = must (v1), S = should (v1.x), C = could (later), W = won't (explic
 
 ### 2.0 Core completion (before any UI)
 - F27 (M) Per-obligation scope in config: `allowed_paths` and limits keyed by obligation id, so the pipeline can run on OBL-ART4A, OBL-ART53-1A, OBL-ART53-1C and OBL-ART73 without editing code.
-- F28 (M) Live smoke test and one live propose with genuine Art 50(2) text (Phase 0); result recorded as a receipt.
+- F28 (M) Live smoke test and one live propose with genuine Art 50(2) text (core lane, section 6.2); result recorded as a receipt.
 - F29 (S) Row-migration assistant: draft a structured record from one of the 63 register rows using the same Drafter/Verifier path, never writing `verification.status`.
 - F30 (S) CI workflow running `check_register.py` (80) and `workflow/test_pipeline.py` (12).
 
@@ -87,7 +87,7 @@ Each row attacks a feature or assumption, states the result, and records the cha
 | 3 | Name-check approval is not authentication (known limit 2). A web app makes it reachable by others. | Blocker for any deployment beyond localhost. | F24 Must. Approver identity comes from OIDC subject; the config `approvers` list maps to OIDC identities. Approval still needs the typed patch-hash prefix. |
 | 4 | Roles: can an admin raise `verified_primary`? | Would defeat the gate. | Only `legal_reviewer` with a named human can verify (F7); admin cannot; database CHECK constraint requires reviewer, `verified_at` and sources for `verified_primary`. |
 | 5 | Prompt injection through source text (test t3 covers an injected instruction). | Handled in the pipeline by path allow-list and replace-only ops; a UI must not weaken it. | Source text is rendered as inert text (no HTML, no links followed); packet size capped; allowed paths stay in config, not editable from the UI by non-admins. |
-| 6 | No live model run has happened; tests prove plumbing, not quality. Building a UI around an unproven drafter is premature. | Valid. | Phase 0 is a live smoke test on the user's machine (needs NVIDIA access, unreachable from this cloud environment). UI work on the review screen can proceed against stub-model fixtures. |
+| 6 | No live model run has happened; tests prove plumbing, not quality. Building a UI around an unproven drafter is premature. | Valid, but it does not block parallel work. | The core lane runs F28 (live smoke test on the user's machine; NVIDIA is unreachable from this cloud environment) while the front end builds the review screen against stub-model fixtures and the contract. No live demo before F28. |
 | 7 | Reasoning models exhaust the 1500-token cap and truncated JSON is unrecoverable. | Real. | Run result shows `budget_exceeded` clearly; raising `max_tokens_per_call` is an admin config change with an audit entry, not a UI slider on the run form. |
 | 8 | Concurrent edits: two proposals against the same base revision. | Pipeline rechecks base revision at commit. | Second commit fails with "base revision changed"; UI offers re-propose. Add a unique constraint on one in-flight commit per register. |
 | 9 | A patch that changes a date can make stored evaluations' expected outcomes wrong, and the checker then rejects it (limit 3). | Real; blocks commits with no guidance. | F11 shows "evaluations affected" from the checker output and tells the human which expected values must be updated first. |
@@ -165,25 +165,71 @@ Canonical register stays in the YAML file (section 6, row 2). Tables:
 - Security: OWASP ASVS L2 as the target for the pilot; dependency scanning in CI.
 - Privacy: fictional data only in v1 (section 3, row 11).
 
-## 6. Delivery plan
+## 6. Delivery plan: front end and back end in parallel
 
-| Phase | Scope | Exit criteria |
+Decision (owner): drive front end and back end in parallel so there are no gaps between them. This replaces the earlier "core first, UI later" ordering. The core (register, checker, pipeline) is a third lane that both depend on.
+
+### 6.1 Gap-prevention rules
+1. **One contract.** `openapi/openapi.yaml` is the only description of the API. Register record shapes are `$ref`'d from `eu-ai-act-register.schema.json`, never copied. A change to either file is a contract change and needs both lanes' review.
+2. **Generated, not hand-written, glue.** Front end generates its TypeScript client from the contract; back end generates request/response models (or validates against the contract in tests). Neither side writes types by hand.
+3. **Mock first.** The front end builds against a mock server generated from the contract (for example Prism) with fixtures taken from the real register and the 12 pipeline test scenarios. The back end ships a stub-model mode so the same fixtures are reachable from the real server.
+4. **Contract tests in CI.** Back end: every response in tests is validated against the contract (schemathesis or equivalent). Front end: mock and real server must both pass the same Playwright specs.
+5. **Error codes are part of the contract.** Every `Problem.code` has a front-end handler and a back-end test; the traceability matrix below lists them.
+6. **Definition of done is a vertical slice.** A feature is done only when contract, back end, front end and one end-to-end test (stub models) all exist.
+7. **Core stays the single rule implementation.** The back end imports `check_register.py` and `workflow/pipeline.py`; neither lane re-implements derive(), forbidden() or the approval checks.
+
+### 6.2 Lanes
+
+| Lane | Owns | Starts with |
 |---|---|---|
-| 0 (core) | Live smoke test per model on the user's machine; one live propose with genuine Art 50(2) text; add CI workflow; per-obligation scope (F27-F28, F30) | A real `review.json` pasted back; CI green on both existing suites |
-| 0b (core) | Migrate the remaining 4 obligations through the workflow; start row migration (F29) | Each obligation has a reviewed patch or an explicit no_change; checker still 80+ |
-| 1 | Read-only app: register, detail, revisions, blocked banner, migration board (F1-F5, F21) | Every screen shows blocked reasons; no write endpoints |
-| 2 | Workflow UI: packet, run, review, approve, commit, auth, roles (F9-F13, F24-F25) | End-to-end approve on stub models in Playwright; replay returns `already_committed` |
-| 3 | Verification queue and action; evaluations with derive view; reports (F6-F8, F15-F16, F20) | Verification of one obligation re-derives its evaluations; pass-rate matches `check_register.py` |
-| 4 | Evidence, exemptions, exports, incident clock, retention (F17-F19, F22-F23) | Auditor export reproduces a past evaluation |
+| Contract | `openapi/openapi.yaml`, error-code list, fixtures | Merge this contract (v0.1, 19 paths, validates) |
+| Core | F27 per-obligation scope, F28 live smoke test, F30 CI, F29 row migration | Per-obligation `allowed_paths`; CI running both suites |
+| Back end | FastAPI wrapper, Postgres, auth, audit chain, `RegisterStore`, async runs | Read endpoints on the real register, then workflow endpoints on stub models |
+| Front end | React app, generated client, mock server, Playwright | Overview + register screens on the mock, then review/approve screen |
+
+### 6.3 Vertical slices (each slice is built by all lanes at once)
+
+| Slice | Features | Endpoints | Screens | End-to-end test |
+|---|---|---|---|---|
+| S1 Read the register | F1-F4, F21 (read) | getRegister, getObligation, getControl, listRevisions, diffRevisions, getMe | Overview, Register list, Obligation detail, Revisions | Blocked banner appears for all 5 obligations |
+| S2 Propose and review | F9-F11, F25 | createPacket, getPacket, startRun, listRuns, getRun | Packet form, Run list, Review (diff, quotes, verdicts, flags) | Stub run reaches `ready_for_review`; fabricated quote shows rejected |
+| S3 Approve and commit | F12-F14, F24 | approveReview, rejectReview, commitApproval, exportRegister | Approve dialog, Commit result, Receipt | Replay returns `already_committed`; stale base returns `base_revision_changed` |
+| S4 Verify | F6-F8 | getVerificationQueue, verifyObligation | Verification queue, Verify dialog | Non-reviewer gets 403; verifying re-derives evaluations |
+| S5 Evaluate and report | F15-F16, F20 | listEvaluations, createEvaluation, getCoverage | Evaluations (now vs if verified), Reports | Pass rate is null while unverified; matches checker after verification |
+| S6 Audit | F21 | listAudit | Audit log | Chain verifies; tampered row is flagged |
+| S7 Later | F17-F19, F22-F23 | extend contract first | Evidence, exemptions, retention | Defined when scheduled |
+
+Slices S1 to S3 are the first release candidate; S4 to S6 follow. The core lane's F27/F28/F30 land alongside S1 and must be done before S2 is run against a live model.
+
+### 6.4 Traceability (contract error codes to behaviour)
+
+| `Problem.code` | Raised by | Front-end handling | Slice |
+|---|---|---|---|
+| verification_required | any automated conclusion without `verified_primary` | Show blocked reason, link to verification queue | S1 |
+| base_revision_changed | commitApproval | Banner, offer re-propose | S3 |
+| unacknowledged_flag | approveReview | Highlight unticked flags | S3 |
+| patch_hash_mismatch | approveReview | Field error on hash prefix | S3 |
+| source_hash_mismatch | commitApproval | Block, show which source changed | S3 |
+| not_approvable | approveReview | Hide approve for non-`ready_for_review` | S3 |
+| forbidden_role | verifyObligation, approveReview | 403 page with required role | S3, S4 |
+| checker_rejected / schema_invalid | commitApproval, createEvaluation | List violations; show affected evaluations | S3, S5 |
+| budget_exceeded / same_model_refused | startRun | Show budget used; explain refusal | S2 |
+| already_committed | commitApproval (replay) | Show original receipt | S3 |
+
+### 6.5 Parallel-delivery risks
+- **Contract churn.** Mitigation: freeze v0.1 for S1-S3; additive changes only (new optional fields, new endpoints) until S3 ships.
+- **Mock drift from real behaviour.** Mitigation: both servers run the same Playwright suite in CI; fixtures come from the real register and test scenarios.
+- **Core change breaks the contract** (for example a new obligation field). Mitigation: contract references the register schema, so a schema change fails contract tests on the back end first.
+- **Live model behaviour differs from stubs** (truncation, slow runs, odd verdicts). Mitigation: F28 before any live demo; the review screen handles `budget_exceeded` and `verifier_invalid` from day one.
 
 ## 7. Open questions for the approver
-1. (Resolved) Goal is the register plus Drafter/Verifier workflow. Remaining question: is a UI in scope for v1, or should layers wait until the core covers all five obligations?
+1. (Resolved) Goal is the register plus Drafter/Verifier workflow, with front end and back end delivered in parallel (section 6).
 2. Which OIDC provider will be used, and where will the app be hosted (it must reach NVIDIA)?
 3. Should a second person (legal reviewer) be added in v1, or does the single-approver pilot continue?
 4. Which two model families for drafter and verifier (the supplied IDs are unverified)?
 5. Is a React + FastAPI + Postgres stack acceptable, given the Windows/PowerShell development machine?
 
 ## 8. Risks not resolved by this spec
-- Model quality is untested (Phase 0).
+- Model quality is untested until F28 completes.
 - Legal readings stay secondary-source until a human checks the Official Journal.
 - The audit chain detects tampering by a database admin; it does not prevent it.

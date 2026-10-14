@@ -60,6 +60,13 @@ paths:
         - {name: to, in: path, required: true, schema: {$ref: "#/components/schemas/Sha256"}}
       responses:
         "200": {description: Path-level diff, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/DiffEntry"}}}}}
+  /settings:
+    get:
+      tags: [platform]
+      operationId: getSettings
+      summary: Read-only workflow settings (F25). Never includes keys.
+      responses:
+        "200": {description: OK, content: {application/json: {schema: {$ref: "#/components/schemas/Settings"}}}}
   /packets:
     post:
       tags: [workflow]
@@ -77,6 +84,7 @@ paths:
       parameters: [{$ref: "#/components/parameters/Id"}]
       responses:
         "200": {description: OK, content: {application/json: {schema: {$ref: "#/components/schemas/Packet"}}}}
+        "404": {$ref: "#/components/responses/Problem"}
   /runs:
     post:
       tags: [workflow]
@@ -87,7 +95,9 @@ paths:
         content: {application/json: {schema: {$ref: "#/components/schemas/RunCreate"}}}
       responses:
         "202": {description: Accepted, content: {application/json: {schema: {$ref: "#/components/schemas/Run"}}}}
+        "404": {$ref: "#/components/responses/Problem"}
         "422": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
     get:
       tags: [workflow]
       operationId: listRuns
@@ -101,6 +111,7 @@ paths:
       parameters: [{$ref: "#/components/parameters/Id"}]
       responses:
         "200": {description: Run with review once finished, content: {application/json: {schema: {$ref: "#/components/schemas/RunDetail"}}}}
+        "404": {$ref: "#/components/responses/Problem"}
   /reviews/{id}/approve:
     post:
       tags: [workflow]
@@ -210,7 +221,7 @@ components:
           type: string
           enum: [unauthenticated, verification_required, base_revision_changed, unacknowledged_flag, patch_hash_mismatch,
                  source_hash_mismatch, not_approvable, forbidden_role, checker_rejected, schema_invalid,
-                 budget_exceeded, same_model_refused, not_found, already_committed]
+                 budget_exceeded, same_model_refused, model_unavailable, not_found, already_committed]
         violations: {type: array, items: {type: string}}
     User:
       type: object
@@ -294,7 +305,12 @@ components:
     Budget:
       type: object
       required: [calls, completion_tokens]
-      properties: {calls: {type: integer}, completion_tokens: {type: integer}, max_calls: {type: integer}, max_completion_tokens: {type: integer}}
+      properties:
+        calls: {type: integer}
+        prompt_tokens: {type: integer}
+        completion_tokens: {type: integer}
+        max_calls: {type: integer}
+        max_completion_tokens: {type: integer}
     Run:
       type: object
       required: [id, packet_id, status, base_revision, created_at]
@@ -303,39 +319,73 @@ components:
         packet_id: {type: string}
         status: {$ref: "#/components/schemas/RunStatus"}
         base_revision: {$ref: "#/components/schemas/Sha256"}
-        budget: {$ref: "#/components/schemas/Budget"}
+        drafter_model: {type: string}
+        verifier_model: {type: string}
+        budget: {oneOf: [{$ref: "#/components/schemas/Budget"}, {type: "null"}]}
         created_at: {type: string, format: date-time}
     Flag: {type: string, enum: [binding_upgrade, date_change, same_model]}
+    FlagDetail:
+      type: object
+      required: [flag, detail]
+      properties:
+        flag: {$ref: "#/components/schemas/Flag"}
+        op: {type: [integer, "null"], description: "index of the operation, null for run-level flags"}
+        detail: {type: string}
     Verdict: {type: string, enum: [supported, contradicted, unverifiable]}
+    Support:
+      type: object
+      required: [source_id, locator, quote]
+      properties: {source_id: {type: string}, locator: {type: string}, quote: {type: string}}
     PatchOp:
       type: object
       required: [op, path, value, support, verdict]
       properties:
         op: {type: string, const: replace}
         path: {type: string}
-        before: {}
+        before: {description: "current value at path; absent when the path does not exist"}
         value: {}
-        support:
-          type: object
-          required: [source_id, locator, quote]
-          properties: {source_id: {type: string}, locator: {type: string}, quote: {type: string}}
+        rationale: {type: string}
+        support: {type: array, items: {$ref: "#/components/schemas/Support"}}
         verdict: {$ref: "#/components/schemas/Verdict"}
         verifier_note: {type: string}
     Review:
       type: object
-      required: [id, status, patch_hash, ops, flags]
+      required: [id, status, ops, flags, errors, models]
       properties:
         id: {type: string}
         status: {$ref: "#/components/schemas/RunStatus"}
-        patch_hash: {$ref: "#/components/schemas/Sha256"}
+        patch_hash: {type: [string, "null"], description: "null when no patch was produced (escalated, no_change, early budget stop)"}
+        models: {type: object, required: [drafter, verifier], properties: {drafter: {type: string}, verifier: {type: string}}}
         ops: {type: array, items: {$ref: "#/components/schemas/PatchOp"}}
-        flags: {type: array, items: {$ref: "#/components/schemas/Flag"}}
+        flags: {type: array, items: {$ref: "#/components/schemas/FlagDetail"}}
+        errors: {type: array, items: {type: string}}
+        unresolved: {type: array, items: {type: string}}
+        missing_context: {type: array, items: {type: string}}
+        notes: {type: array, items: {type: string}}
         affected_evaluations: {type: array, items: {type: string}}
     RunDetail:
       allOf:
         - {$ref: "#/components/schemas/Run"}
         - type: object
           properties: {review: {oneOf: [{$ref: "#/components/schemas/Review"}, {type: "null"}]}}
+    Settings:
+      type: object
+      required: [model_mode, default_drafter, default_verifier, scope_obligation, limits]
+      properties:
+        model_mode: {type: string, enum: [live, stub], description: "stub: model names must be stub:<scenario>; no network"}
+        default_drafter: {type: [string, "null"]}
+        default_verifier: {type: [string, "null"]}
+        scope_obligation: {type: string}
+        limits:
+          type: object
+          required: [max_calls, max_repairs, max_tokens_per_call, max_total_completion_tokens, max_packet_chars, max_operations]
+          properties:
+            max_calls: {type: integer}
+            max_repairs: {type: integer}
+            max_tokens_per_call: {type: integer}
+            max_total_completion_tokens: {type: integer}
+            max_packet_chars: {type: integer}
+            max_operations: {type: integer}
     ApproveRequest:
       type: object
       required: [patch_hash_prefix, acknowledged_flags]

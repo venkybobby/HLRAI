@@ -101,6 +101,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read-only workflow settings (F25). Never includes keys. */
+        get: operations["getSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/packets": {
         parameters: {
             query?: never;
@@ -324,7 +341,7 @@ export interface components {
             status: number;
             detail?: string;
             /** @enum {string} */
-            code: "unauthenticated" | "verification_required" | "base_revision_changed" | "unacknowledged_flag" | "patch_hash_mismatch" | "source_hash_mismatch" | "not_approvable" | "forbidden_role" | "checker_rejected" | "schema_invalid" | "budget_exceeded" | "same_model_refused" | "not_found" | "already_committed";
+            code: "unauthenticated" | "verification_required" | "base_revision_changed" | "unacknowledged_flag" | "patch_hash_mismatch" | "source_hash_mismatch" | "not_approvable" | "forbidden_role" | "checker_rejected" | "schema_invalid" | "budget_exceeded" | "same_model_refused" | "model_unavailable" | "not_found" | "already_committed";
             violations?: string[];
         };
         User: {
@@ -406,6 +423,7 @@ export interface components {
         };
         Budget: {
             calls: number;
+            prompt_tokens?: number;
             completion_tokens: number;
             max_calls?: number;
             max_completion_tokens?: number;
@@ -415,38 +433,76 @@ export interface components {
             packet_id: string;
             status: components["schemas"]["RunStatus"];
             base_revision: components["schemas"]["Sha256"];
-            budget?: components["schemas"]["Budget"];
+            drafter_model?: string;
+            verifier_model?: string;
+            budget?: components["schemas"]["Budget"] | null;
             /** Format: date-time */
             created_at: string;
         };
         /** @enum {string} */
         Flag: "binding_upgrade" | "date_change" | "same_model";
+        FlagDetail: {
+            flag: components["schemas"]["Flag"];
+            /** @description index of the operation, null for run-level flags */
+            op?: number | null;
+            detail: string;
+        };
         /** @enum {string} */
         Verdict: "supported" | "contradicted" | "unverifiable";
+        Support: {
+            source_id: string;
+            locator: string;
+            quote: string;
+        };
         PatchOp: {
             /** @constant */
             op: "replace";
             path: string;
+            /** @description current value at path; absent when the path does not exist */
             before?: unknown;
             value: unknown;
-            support: {
-                source_id: string;
-                locator: string;
-                quote: string;
-            };
+            rationale?: string;
+            support: components["schemas"]["Support"][];
             verdict: components["schemas"]["Verdict"];
             verifier_note?: string;
         };
         Review: {
             id: string;
             status: components["schemas"]["RunStatus"];
-            patch_hash: components["schemas"]["Sha256"];
+            /** @description null when no patch was produced (escalated, no_change, early budget stop) */
+            patch_hash?: string | null;
+            models: {
+                drafter: string;
+                verifier: string;
+            };
             ops: components["schemas"]["PatchOp"][];
-            flags: components["schemas"]["Flag"][];
+            flags: components["schemas"]["FlagDetail"][];
+            errors: string[];
+            unresolved?: string[];
+            missing_context?: string[];
+            notes?: string[];
             affected_evaluations?: string[];
         };
         RunDetail: components["schemas"]["Run"] & {
             review?: components["schemas"]["Review"] | null;
+        };
+        Settings: {
+            /**
+             * @description stub: model names must be stub:<scenario>; no network
+             * @enum {string}
+             */
+            model_mode: "live" | "stub";
+            default_drafter: string | null;
+            default_verifier: string | null;
+            scope_obligation: string;
+            limits: {
+                max_calls: number;
+                max_repairs: number;
+                max_tokens_per_call: number;
+                max_total_completion_tokens: number;
+                max_packet_chars: number;
+                max_operations: number;
+            };
         };
         ApproveRequest: {
             patch_hash_prefix: string;
@@ -815,6 +871,26 @@ export interface operations {
             };
         };
     };
+    getSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settings"];
+                };
+            };
+        };
+    };
     createPacket: {
         parameters: {
             query?: never;
@@ -860,6 +936,7 @@ export interface operations {
                     "application/json": components["schemas"]["Packet"];
                 };
             };
+            404: components["responses"]["Problem"];
         };
     };
     listRuns: {
@@ -906,7 +983,9 @@ export interface operations {
                     "application/json": components["schemas"]["Run"];
                 };
             };
+            404: components["responses"]["Problem"];
             422: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
         };
     };
     getRun: {
@@ -929,6 +1008,7 @@ export interface operations {
                     "application/json": components["schemas"]["RunDetail"];
                 };
             };
+            404: components["responses"]["Problem"];
         };
     };
     approveReview: {

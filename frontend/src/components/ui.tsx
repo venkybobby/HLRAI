@@ -32,6 +32,18 @@ export function ErrorNote({ error }: { error: unknown }) {
   );
 }
 
+export function ProblemNote({ error }: { error: unknown }) {
+  const p = error instanceof ApiProblem ? error.problem : null;
+  if (!p) return <ErrorNote error={error} />;
+  return (
+    <div role="alert" className="error" data-testid="problem">
+      <strong>{p.title}</strong> <code>{p.code}</code>
+      {p.detail && <div>{p.detail}</div>}
+      {p.violations && p.violations.length > 0 && <ul>{p.violations.map((v) => <li key={v}>{v}</li>)}</ul>}
+    </div>
+  );
+}
+
 export function Section({ title, children }: { title: string; children: ReactNode }) {
   return <section><h2>{title}</h2>{children}</section>;
 }

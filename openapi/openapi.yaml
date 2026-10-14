@@ -1,0 +1,402 @@
+openapi: 3.1.0
+info:
+  title: HLRAI API
+  version: 0.1.0
+  description: >
+    Contract between the React front end and the FastAPI back end. Register
+    record shapes are NOT redefined here; they are $ref'd from
+    eu-ai-act-register.schema.json so there is one source of truth.
+    Invariants (server-enforced): only a legal_reviewer may verify; no endpoint
+    writes completion, operating_permission or verification.status except
+    /obligations/{id}/verify; approvals bind patch hash, source hashes and base revision.
+servers:
+  - url: /api/v1
+security:
+  - session: []
+tags: [{name: register}, {name: workflow}, {name: verification}, {name: evaluations}, {name: reports}, {name: platform}]
+paths:
+  /me:
+    get:
+      tags: [platform]
+      operationId: getMe
+      responses:
+        "200": {description: Current user, content: {application/json: {schema: {$ref: "#/components/schemas/User"}}}}
+        "401": {$ref: "#/components/responses/Problem"}
+  /register:
+    get:
+      tags: [register]
+      operationId: getRegister
+      summary: Summary lists plus current revision and conclusion policy
+      responses:
+        "200": {description: OK, content: {application/json: {schema: {$ref: "#/components/schemas/RegisterSummary"}}}}
+  /obligations/{id}:
+    get:
+      tags: [register]
+      operationId: getObligation
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: OK, content: {application/json: {schema: {$ref: "#/components/schemas/ObligationDetail"}}}}
+        "404": {$ref: "#/components/responses/Problem"}
+  /controls/{id}:
+    get:
+      tags: [register]
+      operationId: getControl
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: OK, content: {application/json: {schema: {$ref: "../eu-ai-act-register.schema.json#/$defs/control"}}}}
+        "404": {$ref: "#/components/responses/Problem"}
+  /revisions:
+    get:
+      tags: [register]
+      operationId: listRevisions
+      responses:
+        "200": {description: Newest first, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Revision"}}}}}
+  /revisions/{from}/diff/{to}:
+    get:
+      tags: [register]
+      operationId: diffRevisions
+      parameters:
+        - {name: from, in: path, required: true, schema: {$ref: "#/components/schemas/Sha256"}}
+        - {name: to, in: path, required: true, schema: {$ref: "#/components/schemas/Sha256"}}
+      responses:
+        "200": {description: Path-level diff, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/DiffEntry"}}}}}
+  /packets:
+    post:
+      tags: [workflow]
+      operationId: createPacket
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: "#/components/schemas/PacketCreate"}}}
+      responses:
+        "201": {description: Created, content: {application/json: {schema: {$ref: "#/components/schemas/Packet"}}}}
+        "422": {$ref: "#/components/responses/Problem"}
+  /packets/{id}:
+    get:
+      tags: [workflow]
+      operationId: getPacket
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: OK, content: {application/json: {schema: {$ref: "#/components/schemas/Packet"}}}}
+  /runs:
+    post:
+      tags: [workflow]
+      operationId: startRun
+      summary: Start propose (Drafter then Verifier). Asynchronous.
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: "#/components/schemas/RunCreate"}}}
+      responses:
+        "202": {description: Accepted, content: {application/json: {schema: {$ref: "#/components/schemas/Run"}}}}
+        "422": {$ref: "#/components/responses/Problem"}
+    get:
+      tags: [workflow]
+      operationId: listRuns
+      parameters: [{name: status, in: query, schema: {$ref: "#/components/schemas/RunStatus"}}]
+      responses:
+        "200": {description: OK, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Run"}}}}}
+  /runs/{id}:
+    get:
+      tags: [workflow]
+      operationId: getRun
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: Run with review once finished, content: {application/json: {schema: {$ref: "#/components/schemas/RunDetail"}}}}
+  /reviews/{id}/approve:
+    post:
+      tags: [workflow]
+      operationId: approveReview
+      description: Approver identity comes from the session. Only a review with status ready_for_review is approvable.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: "#/components/schemas/ApproveRequest"}}}
+      responses:
+        "201": {description: Approval created, content: {application/json: {schema: {$ref: "#/components/schemas/Approval"}}}}
+        "409": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+  /reviews/{id}/reject:
+    post:
+      tags: [workflow]
+      operationId: rejectReview
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [reason], properties: {reason: {type: string, minLength: 1}}}}}
+      responses:
+        "204": {description: Rejected}
+  /approvals/{id}/commit:
+    post:
+      tags: [workflow]
+      operationId: commitApproval
+      description: Idempotent. Replay returns 200 with outcome already_committed.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: Committed or replayed, content: {application/json: {schema: {$ref: "#/components/schemas/CommitResult"}}}}
+        "409": {$ref: "#/components/responses/Problem"}
+  /obligations/{id}/verify:
+    post:
+      tags: [verification]
+      operationId: verifyObligation
+      description: legal_reviewer only. Never callable by the workflow or a model.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: "#/components/schemas/VerifyRequest"}}}
+      responses:
+        "200": {description: Verified; dependent evaluations re-derived, content: {application/json: {schema: {$ref: "#/components/schemas/ObligationDetail"}}}}
+        "403": {$ref: "#/components/responses/Problem"}
+  /verification-queue:
+    get:
+      tags: [verification]
+      operationId: getVerificationQueue
+      responses:
+        "200": {description: Obligations below verified_primary and open legal items, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/QueueItem"}}}}}
+  /evaluations:
+    get:
+      tags: [evaluations]
+      operationId: listEvaluations
+      responses:
+        "200": {description: OK, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/EvaluationView"}}}}}
+    post:
+      tags: [evaluations]
+      operationId: createEvaluation
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: "../eu-ai-act-register.schema.json#/$defs/evaluation"}}}
+      responses:
+        "201": {description: Created, content: {application/json: {schema: {$ref: "#/components/schemas/EvaluationView"}}}}
+        "422": {$ref: "#/components/responses/Problem"}
+  /reports/coverage:
+    get:
+      tags: [reports]
+      operationId: getCoverage
+      responses:
+        "200": {description: OK, content: {application/json: {schema: {$ref: "#/components/schemas/Coverage"}}}}
+  /audit:
+    get:
+      tags: [platform]
+      operationId: listAudit
+      parameters:
+        - {name: after_seq, in: query, schema: {type: integer, minimum: 0}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 50}}
+      responses:
+        "200": {description: OK, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/AuditEntry"}}}}}
+  /export/register.yaml:
+    get:
+      tags: [platform]
+      operationId: exportRegister
+      responses:
+        "200": {description: Canonical bytes, content: {application/yaml: {schema: {type: string}}}}
+components:
+  securitySchemes:
+    session: {type: apiKey, in: cookie, name: hlrai_session}
+  parameters:
+    Id: {name: id, in: path, required: true, schema: {type: string, minLength: 1}}
+  responses:
+    Problem:
+      description: Error (RFC 7807). `code` is stable and drives front-end behaviour.
+      content: {application/problem+json: {schema: {$ref: "#/components/schemas/Problem"}}}
+  schemas:
+    Sha256: {type: string, pattern: "^[0-9a-f]{64}$"}
+    Problem:
+      type: object
+      required: [type, title, status, code]
+      properties:
+        type: {type: string}
+        title: {type: string}
+        status: {type: integer}
+        detail: {type: string}
+        code:
+          type: string
+          enum: [verification_required, base_revision_changed, unacknowledged_flag, patch_hash_mismatch,
+                 source_hash_mismatch, not_approvable, forbidden_role, checker_rejected, schema_invalid,
+                 budget_exceeded, same_model_refused, not_found, already_committed]
+        violations: {type: array, items: {type: string}}
+    User:
+      type: object
+      required: [id, name, role]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        role: {type: string, enum: [viewer, control_owner, legal_reviewer, approver, admin]}
+    RegisterSummary:
+      type: object
+      required: [revision, status, conclusion_policy, obligations, controls, evaluations, migration]
+      properties:
+        revision: {$ref: "#/components/schemas/Sha256"}
+        status: {type: string}
+        conclusion_policy: {type: object}
+        obligations: {type: array, items: {$ref: "#/components/schemas/ObligationRow"}}
+        controls: {type: array, items: {type: object, required: [id, category], properties: {id: {type: string}, category: {type: string}, criticality: {type: string}}}}
+        evaluations: {type: array, items: {$ref: "#/components/schemas/EvaluationView"}}
+        migration: {type: object, required: [migrated, total], properties: {migrated: {type: integer}, total: {type: integer}}}
+    ObligationRow:
+      type: object
+      required: [id, actor, verification_status, blocked]
+      properties:
+        id: {type: string}
+        actor: {type: string}
+        duty: {type: string}
+        verification_status: {type: string, enum: [unverified, verified_secondary, verified_primary]}
+        blocked: {type: boolean, description: "true when no automated conclusion may be shown"}
+    ObligationDetail:
+      type: object
+      required: [obligation, controls, evaluation_ids, blocked_reason]
+      properties:
+        obligation: {$ref: "../eu-ai-act-register.schema.json#/$defs/obligation"}
+        controls: {type: array, items: {$ref: "../eu-ai-act-register.schema.json#/$defs/control"}}
+        evaluation_ids: {type: array, items: {type: string}}
+        blocked_reason: {type: [string, "null"]}
+    Revision:
+      type: object
+      required: [sha256, created_at]
+      properties:
+        sha256: {$ref: "#/components/schemas/Sha256"}
+        created_at: {type: string, format: date-time}
+        receipt_id: {type: [string, "null"]}
+    DiffEntry:
+      type: object
+      required: [path, op]
+      properties:
+        path: {type: string}
+        op: {type: string, enum: [added, removed, changed]}
+        before: {}
+        after: {}
+    PacketCreate:
+      type: object
+      required: [obligation_id, sources]
+      properties:
+        obligation_id: {type: string}
+        sources:
+          type: array
+          minItems: 1
+          items: {type: object, required: [source_id, text], properties: {source_id: {type: string}, text: {type: string}}}
+    Packet:
+      allOf:
+        - {$ref: "#/components/schemas/PacketCreate"}
+        - type: object
+          required: [id, source_hashes, created_at]
+          properties:
+            id: {type: string}
+            source_hashes: {type: object, additionalProperties: {$ref: "#/components/schemas/Sha256"}}
+            created_at: {type: string, format: date-time}
+    RunStatus:
+      type: string
+      enum: [running, ready_for_review, needs_revision, no_change, escalated, verifier_invalid, budget_exceeded]
+    RunCreate:
+      type: object
+      required: [packet_id, drafter_model, verifier_model]
+      properties:
+        packet_id: {type: string}
+        drafter_model: {type: string}
+        verifier_model: {type: string}
+        allow_same_model: {type: boolean, default: false}
+    Budget:
+      type: object
+      required: [calls, completion_tokens]
+      properties: {calls: {type: integer}, completion_tokens: {type: integer}, max_calls: {type: integer}, max_completion_tokens: {type: integer}}
+    Run:
+      type: object
+      required: [id, packet_id, status, base_revision, created_at]
+      properties:
+        id: {type: string}
+        packet_id: {type: string}
+        status: {$ref: "#/components/schemas/RunStatus"}
+        base_revision: {$ref: "#/components/schemas/Sha256"}
+        budget: {$ref: "#/components/schemas/Budget"}
+        created_at: {type: string, format: date-time}
+    Flag: {type: string, enum: [binding_upgrade, date_change, same_model]}
+    Verdict: {type: string, enum: [supported, contradicted, unverifiable]}
+    PatchOp:
+      type: object
+      required: [op, path, value, support, verdict]
+      properties:
+        op: {type: string, const: replace}
+        path: {type: string}
+        before: {}
+        value: {}
+        support:
+          type: object
+          required: [source_id, locator, quote]
+          properties: {source_id: {type: string}, locator: {type: string}, quote: {type: string}}
+        verdict: {$ref: "#/components/schemas/Verdict"}
+        verifier_note: {type: string}
+    Review:
+      type: object
+      required: [id, status, patch_hash, ops, flags]
+      properties:
+        id: {type: string}
+        status: {$ref: "#/components/schemas/RunStatus"}
+        patch_hash: {$ref: "#/components/schemas/Sha256"}
+        ops: {type: array, items: {$ref: "#/components/schemas/PatchOp"}}
+        flags: {type: array, items: {$ref: "#/components/schemas/Flag"}}
+        affected_evaluations: {type: array, items: {type: string}}
+    RunDetail:
+      allOf:
+        - {$ref: "#/components/schemas/Run"}
+        - type: object
+          properties: {review: {oneOf: [{$ref: "#/components/schemas/Review"}, {type: "null"}]}}
+    ApproveRequest:
+      type: object
+      required: [patch_hash_prefix, acknowledged_flags]
+      properties:
+        patch_hash_prefix: {type: string, pattern: "^[0-9a-f]{8,64}$"}
+        acknowledged_flags: {type: array, items: {$ref: "#/components/schemas/Flag"}}
+    Approval:
+      type: object
+      required: [id, review_id, approver, patch_hash, created_at]
+      properties: {id: {type: string}, review_id: {type: string}, approver: {type: string}, patch_hash: {$ref: "#/components/schemas/Sha256"}, created_at: {type: string, format: date-time}}
+    CommitResult:
+      type: object
+      required: [outcome, after_revision]
+      properties:
+        outcome: {type: string, enum: [committed, already_committed, recovered]}
+        before_revision: {$ref: "#/components/schemas/Sha256"}
+        after_revision: {$ref: "#/components/schemas/Sha256"}
+        receipt_id: {type: string}
+    VerifyRequest:
+      type: object
+      required: [sources, source_version]
+      properties:
+        sources: {type: array, minItems: 1, items: {type: string}}
+        source_version: {type: string, minLength: 1}
+    QueueItem:
+      type: object
+      required: [kind, id, status]
+      properties:
+        kind: {type: string, enum: [obligation, legal_item]}
+        id: {type: string}
+        status: {type: string}
+        note: {type: string}
+    EvaluationView:
+      type: object
+      required: [evaluation, now, if_verified]
+      properties:
+        evaluation: {$ref: "../eu-ai-act-register.schema.json#/$defs/evaluation"}
+        now: {$ref: "#/components/schemas/Outcome"}
+        if_verified: {$ref: "#/components/schemas/Outcome"}
+    Outcome:
+      type: object
+      required: [completion, operating_permission, flags]
+      properties: {completion: {type: string}, operating_permission: {type: string}, flags: {type: array, items: {type: string}}}
+    Coverage:
+      type: object
+      required: [revision, rows_total, rows_migrated, automatable_after_approvals, pass_rate]
+      properties:
+        revision: {$ref: "#/components/schemas/Sha256"}
+        rows_total: {type: integer}
+        rows_migrated: {type: integer}
+        automatable_after_approvals: {type: integer}
+        pass_rate: {type: [number, "null"], description: "null while every reading is unverified"}
+    AuditEntry:
+      type: object
+      required: [seq, ts, actor, action, entity, hash, prev_hash]
+      properties:
+        seq: {type: integer}
+        ts: {type: string, format: date-time}
+        actor: {type: string}
+        action: {type: string}
+        entity: {type: string}
+        payload: {type: object}
+        prev_hash: {type: string}
+        hash: {type: string}

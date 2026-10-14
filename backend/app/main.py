@@ -5,10 +5,19 @@ import re
 from fastapi import Depends, FastAPI, Path as PathParam
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import Response
+from pydantic import BaseModel
 
 from . import service
+from .runs import Runs
 from .errors import ApiError, api_error_handler, validation_error_handler
 from .register_store import RegisterStore
+
+class RunCreate(BaseModel):
+    packet_id: str
+    drafter_model: str
+    verifier_model: str
+    allow_same_model: bool = False
+
 
 SHA = re.compile(r"^[0-9a-f]{64}$")
 
@@ -55,6 +64,33 @@ def create_app() -> FastAPI:
     def diff_revisions(a: str = PathParam(pattern=SHA.pattern), b: str = PathParam(pattern=SHA.pattern),
                        store=Depends(get_store)):
         return service.diff(store, a, b)
+
+    def runs(store=Depends(get_store)):
+        return Runs(store)
+
+    @app.get(f"{r}/settings")
+    def get_settings(rs=Depends(runs)):
+        return rs.settings()
+
+    @app.post(f"{r}/packets", status_code=201)
+    def create_packet(body: dict, rs=Depends(runs)):
+        return rs.create_packet(body)
+
+    @app.get(f"{r}/packets/{{pid}}")
+    def get_packet(pid: str, rs=Depends(runs)):
+        return rs.get_packet(pid)
+
+    @app.post(f"{r}/runs", status_code=202)
+    def start_run(body: RunCreate, rs=Depends(runs)):
+        return rs.start(body.model_dump())
+
+    @app.get(f"{r}/runs")
+    def list_runs(status: str | None = None, rs=Depends(runs)):
+        return rs.list(status)
+
+    @app.get(f"{r}/runs/{{rid}}")
+    def get_run(rid: str, rs=Depends(runs)):
+        return rs.get(rid)
 
     @app.get(f"{r}/export/register.yaml")
     def export_register(store=Depends(get_store)):

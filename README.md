@@ -8,7 +8,7 @@ Product spec: `SPEC.md`. Handoff and decisions: `HANDOFF.md`. API contract: `ope
 | `eu-ai-act-register.yaml`, `.schema.json`, `check_register.py` | Core: register, contract, checker (single implementation of the rules) |
 | `workflow/` | Core: Drafter/Verifier pipeline (CLI) |
 | `openapi/openapi.yaml` | The one API contract shared by back end and front end |
-| `backend/` | FastAPI wrapper over the core; slice S1 (read-only) implemented |
+| `backend/` | FastAPI wrapper over the core; slices S1 (read) and S2 (propose and review) implemented |
 | `frontend/` | React + TypeScript; client types are generated from the contract |
 
 ## Run (PowerShell)
@@ -40,6 +40,19 @@ python workflow\pipeline.py propose --packet packet.json --live
 ```
 
 The pipeline fixes sampling at temperature 0.1, top_p 1 and a 1500-token cap per call (`workflow_config.json` limits). Per-model settings from the NVIDIA samples (GLM 0.5 / 1024, Muse 1.0 / top_p 0.95 / 8192) are not applied; raise limits only deliberately (HANDOFF section 7, item 5).
+
+## Propose and review (slice S2)
+
+`POST /packets` then `POST /runs` runs the pipeline's `propose` in the background; `GET /runs/{id}` returns the review (diff, quotes, verdicts, flags, budget). Propose never writes the register; approval and commit arrive in S3.
+
+- `HLRAI_MODEL_MODE=live` (default) uses the models you name and needs `NVIDIA_API_KEY`; without it the API answers `503 model_unavailable`.
+- `HLRAI_MODEL_MODE=stub` uses scripted models named `stub:draft-supported`, `stub:draft-fabricated`, `stub:draft-nochange` (drafter) and `stub:verify-supported`, `stub:verify-contradicted`, `stub:verify-unverifiable` (verifier). No network, no key. They prove plumbing, not model quality.
+- Run and packet records are JSON files under `.workflow-state/api/` (set `HLRAI_STATE` to relocate). Postgres is deferred until there are multi-user writes.
+
+```powershell
+$env:HLRAI_MODEL_MODE = "stub"
+python -m uvicorn backend.app.main:app --port 8000
+```
 
 ## Auth
 

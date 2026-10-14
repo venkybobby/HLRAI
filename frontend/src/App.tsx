@@ -4,6 +4,9 @@ import { api } from "./api/client";
 import { ObligationPage } from "./pages/ObligationPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { RegisterPage } from "./pages/RegisterPage";
+import { RunPage } from "./pages/RunPage";
+import { RunsPage } from "./pages/RunsPage";
+import { WorkflowPage } from "./pages/WorkflowPage";
 import { RevisionsPage } from "./pages/RevisionsPage";
 
 export function App() {
@@ -16,6 +19,8 @@ export function App() {
         <nav aria-label="Primary">
           <NavLink to="/" end>Overview</NavLink>
           <NavLink to="/register">Register</NavLink>
+          <NavLink to="/workflow">Propose</NavLink>
+          <NavLink to="/runs">Runs</NavLink>
           <NavLink to="/revisions">Revisions</NavLink>
         </nav>
         <span className="who" data-testid="who">{me.data ? `${me.data.name} (${me.data.role})` : "…"}</span>
@@ -25,6 +30,9 @@ export function App() {
           <Route path="/" element={<OverviewPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/obligations/:id" element={<ObligationPage />} />
+          <Route path="/workflow" element={<WorkflowPage />} />
+          <Route path="/runs" element={<RunsPage />} />
+          <Route path="/runs/:id" element={<RunPage />} />
           <Route path="/revisions" element={<RevisionsPage />} />
           <Route path="*" element={<p>Page not found.</p>} />
         </Routes>

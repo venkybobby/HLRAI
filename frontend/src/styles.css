@@ -17,3 +17,12 @@ table { width:100%; border-collapse:collapse; } th,td { text-align:left; padding
 .muted { color:var(--muted); } .error { color:var(--warn-fg); background:var(--warn-bg); padding:.5rem; } .sr { position:absolute; left:-999px; }
 :focus-visible { outline:3px solid var(--link); outline-offset:2px; }
 @media (max-width:600px) { .facts { grid-template-columns:1fr; } table { display:block; overflow-x:auto; } }
+.banner.calm { background:var(--ok-bg); color:var(--ok-fg); }
+form fieldset { margin:1rem 0; border:1px solid var(--line); border-radius:6px; padding:.75rem 1rem; }
+label { display:block; margin:.5rem 0; } input, textarea { display:block; width:100%; font:inherit; padding:.4rem; background:var(--bg); color:var(--fg); border:1px solid var(--line); border-radius:4px; }
+button { font:inherit; padding:.4rem .9rem; border-radius:4px; border:1px solid var(--line); background:var(--bg); color:var(--fg); cursor:pointer; } button[type=submit] { background:var(--link); color:var(--bg); border-color:var(--link); } button:disabled { opacity:.5; cursor:not-allowed; }
+.src { border-bottom:1px dashed var(--line); padding-bottom:.5rem; margin-bottom:.5rem; }
+.op { border:1px solid var(--line); border-radius:6px; padding:.5rem 1rem; margin:1rem 0; } .op h3 { font-size:1rem; margin:.25rem 0; overflow-wrap:anywhere; }
+.diff { display:grid; grid-template-columns:1fr 1fr; gap:1rem; } .diff pre { margin:0; padding:.5rem; border:1px solid var(--line); border-radius:4px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; } .diff h4 { margin:.25rem 0; color:var(--muted); font-size:.85rem; }
+blockquote { margin:.5rem 0; padding:.25rem .75rem; border-left:4px solid var(--line); } blockquote footer { color:var(--muted); font-size:.85rem; }
+@media (max-width:600px) { .diff { grid-template-columns:1fr; } }

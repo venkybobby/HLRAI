@@ -1,3 +1,6 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { defineConfig } from "@playwright/test";
 
 // Runs the real FastAPI service (read-only S1 needs no models) behind the built front end.
@@ -11,6 +14,8 @@ export default defineConfig({
     {
       command: "python -m uvicorn backend.app.main:app --port 8000",
       cwd: "..",
+      // scripted models and a throwaway state dir: e2e never calls a live model or touches .workflow-state
+      env: { HLRAI_MODEL_MODE: "stub", HLRAI_STATE: mkdtempSync(join(tmpdir(), "hlrai-e2e-")) },
       url: "http://127.0.0.1:8000/api/v1/register",
       reuseExistingServer: !process.env.CI,
     },
